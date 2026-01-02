@@ -3,6 +3,7 @@
 import argparse
 import os
 import sys
+import time
 
 def main():
     parser = argparse.ArgumentParser(
@@ -21,8 +22,20 @@ def main():
         help="Environment variable key to print"
     )
 
+    # Float sleep flag
+    parser.add_argument(
+        "-s", "--sleep",
+        type=float,
+        metavar="SECONDS",
+        help="Sleep for the given number of seconds (float allowed)"
+    )
+
     # Parse args from sys.argv
     parsed = parser.parse_args()
+
+    # Sleep if requested
+    if parsed.sleep is not None:
+        time.sleep(parsed.sleep)
 
     # Print the entire command line exactly as received
     print("Command line:", " ".join(sys.argv))
