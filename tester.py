@@ -29,21 +29,34 @@ def main():
         metavar="SECONDS",
         help="Sleep for the given number of seconds (float allowed)"
     )
+    parser.add_argument(
+        "-o", "--out",
+        metavar="OUT_TEXT",
+        help="Print the given text to stdout"
+    )
+    parser.add_argument(
+        "-r", "--error",
+        metavar="ERROR_TEXT",
+        help="Print the given text to stderr"
+    )
 
-    # Parse args from sys.argv
     parsed = parser.parse_args()
 
-    # Sleep if requested
-    if parsed.sleep is not None:
-        time.sleep(parsed.sleep)
-
-    # Print the entire command line exactly as received
     print("Command line:", " ".join(sys.argv))
 
-    # For each env key, print the key=value (using None if missing)
     for key in parsed.env:
         value = os.environ.get(key, None)
         print(f"{key}={value}")
+        
+    if parsed.out:
+        print(parsed.out)
+        
+    if parsed.error:
+        print(parsed.error, file=sys.stderr)
+
+    if parsed.sleep is not None:
+        time.sleep(parsed.sleep)
+
 
 if __name__ == "__main__":
     main()
