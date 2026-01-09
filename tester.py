@@ -1,9 +1,19 @@
 #!/usr/bin/env python3
 
 import argparse
+from pathlib import Path
 import os
 import sys
 import time
+
+
+def print_all_files(path: Path) -> None:
+    if path.is_file():
+        print(path.absolute())
+    elif path.is_dir():
+        for item in path.iterdir():
+            print_all_files(item)
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -39,6 +49,19 @@ def main():
         metavar="ERROR_TEXT",
         help="Print the given text to stderr"
     )
+    
+    parser.add_argument(
+        "-l", "--list",
+        metavar="DIRECTORY OR FILE",
+        help="list the directory or file."
+    )
+    
+    parser.add_argument(
+        "-x", "--exitcode",
+        type=int,
+        metavar="EXITCODE",
+        help="exit the program with the given code after doing everything else."
+    )
 
     parsed = parser.parse_args()
 
@@ -53,9 +76,18 @@ def main():
         
     if parsed.error:
         print(parsed.error, file=sys.stderr)
+        
+    if parsed.list:
+        p = Path(parsed.list).absolute().resolve()
+        print(f"\nListing files under {p}")
+        print_all_files(Path(p))
+        print()
 
     if parsed.sleep is not None:
         time.sleep(parsed.sleep)
+    
+    if parsed.exitcode:
+        sys.exit(parsed.exitcode)
 
 
 if __name__ == "__main__":
