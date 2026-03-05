@@ -98,6 +98,13 @@ def main():
 
     parsed = parser.parse_args()
 
+    uid = os.getuid()
+    try:
+        uname = pwd.getpwuid(uid).pw_name
+    except KeyError:
+        uname = None
+    print(f"Running as: {uname} [{uid}]" if uname else f"Running as: [{uid}]")
+
     print("Command line:", " ".join(sys.argv))
 
     for key in parsed.env:
