@@ -25,9 +25,18 @@ def print_all_files(path: Path) -> None:
             print_all_files(item)
 
 
+def touch(path_str: str) -> None:
+    p = Path(path_str)
+    if path_str.endswith("/"):
+        p.mkdir(parents=True, exist_ok=True)
+    else:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.touch()
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Print command line and selected environment variables"
+        description="Simulate and inspect container behavior for testing purposes"
     )
 
     # Arbitrary positional arguments
@@ -67,6 +76,14 @@ def main():
     )
     
     parser.add_argument(
+        "-t", "--touch",
+        action="append",
+        default=[],
+        metavar="PATH",
+        help="Create directories in PATH; touch the final entry if PATH has no trailing slash (repeatable)"
+    )
+
+    parser.add_argument(
         "-x", "--exitcode",
         type=int,
         metavar="EXITCODE",
@@ -87,6 +104,9 @@ def main():
     if parsed.error:
         print(parsed.error, file=sys.stderr)
         
+    for path_str in parsed.touch:
+        touch(path_str)
+
     if parsed.list:
         p = Path(parsed.list).absolute().resolve()
         print(f"\nListing {p}")
