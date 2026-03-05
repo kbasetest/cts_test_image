@@ -2,15 +2,25 @@
 
 import argparse
 from pathlib import Path
+import grp
 import os
+import pwd
+import stat
 import sys
 import time
 
 
+def print_entry(path: Path) -> None:
+    st = path.stat()
+    mode = stat.filemode(st.st_mode)
+    user = pwd.getpwuid(st.st_uid).pw_name
+    group = grp.getgrgid(st.st_gid).gr_name
+    print(f"{mode} {user} {group} {path.absolute()}")
+
+
 def print_all_files(path: Path) -> None:
-    if path.is_file():
-        print(path.absolute())
-    elif path.is_dir():
+    print_entry(path)
+    if path.is_dir():
         for item in path.iterdir():
             print_all_files(item)
 
@@ -79,7 +89,7 @@ def main():
         
     if parsed.list:
         p = Path(parsed.list).absolute().resolve()
-        print(f"\nListing files under {p}")
+        print(f"\nListing {p}")
         print_all_files(Path(p))
         print()
 
