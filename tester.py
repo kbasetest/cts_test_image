@@ -13,8 +13,14 @@ import time
 def print_entry(path: Path) -> None:
     st = path.stat()
     mode = stat.filemode(st.st_mode)
-    user = pwd.getpwuid(st.st_uid).pw_name
-    group = grp.getgrgid(st.st_gid).gr_name
+    try:
+        user = pwd.getpwuid(st.st_uid).pw_name
+    except KeyError:
+        user = f"[{st.st_uid}]"
+    try:
+        group = grp.getgrgid(st.st_gid).gr_name
+    except KeyError:
+        group = f"[{st.st_gid}]"
     print(f"{mode} {user} {group} {path.absolute()}")
 
 
