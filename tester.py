@@ -96,7 +96,41 @@ def main():
         help="exit the program with the given code after doing everything else."
     )
 
+    parser.add_argument(
+        "-p", "--proc-num",
+        type=int,
+        metavar="N",
+        help="0-based process number; indexes into --proc-exitcodes / --proc-sleeps"
+    )
+    parser.add_argument(
+        "--proc-exitcodes",
+        metavar="CODES",
+        help="comma-separated exit codes indexed by --proc-num (e.g. '0,0,1,1')"
+    )
+    parser.add_argument(
+        "--proc-sleeps",
+        metavar="SLEEPS",
+        help="comma-separated sleep durations indexed by --proc-num (e.g. '300,300,0,0')"
+    )
+
     parsed = parser.parse_args()
+
+    if parsed.proc_num is not None:
+        if not parsed.proc_exitcodes and not parsed.proc_sleeps:
+            print("--proc-num requires at least one of --proc-exitcodes or --proc-sleeps", file=sys.stderr)
+            sys.exit(1)
+        if parsed.proc_exitcodes:
+            codes = [int(c.strip()) for c in parsed.proc_exitcodes.split(",")]
+            if parsed.proc_num >= len(codes):
+                print(f"--proc-num {parsed.proc_num} is out of range for --proc-exitcodes ({len(codes)} entries)", file=sys.stderr)
+                sys.exit(1)
+            parsed.exitcode = codes[parsed.proc_num]
+        if parsed.proc_sleeps:
+            sleeps = [float(s.strip()) for s in parsed.proc_sleeps.split(",")]
+            if parsed.proc_num >= len(sleeps):
+                print(f"--proc-num {parsed.proc_num} is out of range for --proc-sleeps ({len(sleeps)} entries)", file=sys.stderr)
+                sys.exit(1)
+            parsed.sleep = sleeps[parsed.proc_num]
 
     uid = os.getuid()
     try:
@@ -129,7 +163,7 @@ def main():
     if parsed.sleep is not None:
         time.sleep(parsed.sleep)
     
-    if parsed.exitcode:
+    if parsed.exitcode is not None:
         sys.exit(parsed.exitcode)
 
 
