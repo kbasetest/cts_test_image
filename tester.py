@@ -92,7 +92,7 @@ def main():
 
     parser.add_argument(
         "-R", "--random",
-        metavar="SLEEP:CODE:W_RUN:W_FAIL",
+        metavar="SLEEP,CODE,W_RUN,W_FAIL",
         help="randomly run (sleep SLEEP secs), complete (exit 0), or fail (exit CODE); "
              "W_RUN and W_FAIL are weights (0.0-1.0), W_COMPLETE = 1 - W_RUN - W_FAIL"
     )
@@ -133,9 +133,9 @@ def main():
     print("Command line:", " ".join(sys.argv))
 
     if parsed.random:
-        parts = parsed.random.split(":")
+        parts = parsed.random.split(",")
         if len(parts) != 4:
-            print("--random requires format SLEEP:CODE:W_RUN:W_FAIL", file=sys.stderr)
+            print("--random requires format SLEEP,CODE,W_RUN,W_FAIL", file=sys.stderr)
             sys.exit(1)
         sleep_secs, fail_code, w_run, w_fail = float(parts[0]), int(parts[1]), float(parts[2]), float(parts[3])
         errors = []
