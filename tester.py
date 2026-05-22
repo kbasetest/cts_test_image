@@ -5,6 +5,7 @@ from pathlib import Path
 import grp
 import os
 import pwd
+import random
 import stat
 import sys
 import time
@@ -90,6 +91,13 @@ def main():
     )
 
     parser.add_argument(
+        "-R", "--random",
+        metavar="SLEEP:CODE:W_RUN:W_FAIL",
+        help="randomly run (sleep SLEEP secs), complete (exit 0), or fail (exit CODE); "
+             "W_RUN and W_FAIL are weights (0.0-1.0), W_COMPLETE = 1 - W_RUN - W_FAIL"
+    )
+
+    parser.add_argument(
         "-x", "--exitcode",
         type=int,
         metavar="EXITCODE",
@@ -115,6 +123,47 @@ def main():
 
     parsed = parser.parse_args()
 
+    uid = os.getuid()
+    try:
+        uname = pwd.getpwuid(uid).pw_name
+    except KeyError:
+        uname = None
+    print(f"Running as: {uname} [{uid}]" if uname else f"Running as: [{uid}]")
+
+    print("Command line:", " ".join(sys.argv))
+
+    if parsed.random:
+        parts = parsed.random.split(":")
+        if len(parts) != 4:
+            print("--random requires format SLEEP:CODE:W_RUN:W_FAIL", file=sys.stderr)
+            sys.exit(1)
+        sleep_secs, fail_code, w_run, w_fail = float(parts[0]), int(parts[1]), float(parts[2]), float(parts[3])
+        errors = []
+        if sleep_secs < 0:
+            errors.append(f"SLEEP must be >= 0, got {sleep_secs}")
+        if not (0 < fail_code <= 255):
+            errors.append(f"CODE must be 1-255, got {fail_code}")
+        if not (0.0 <= w_run <= 1.0):
+            errors.append(f"W_RUN must be 0.0-1.0, got {w_run}")
+        if not (0.0 <= w_fail <= 1.0):
+            errors.append(f"W_FAIL must be 0.0-1.0, got {w_fail}")
+        w_complete = 1.0 - w_run - w_fail
+        if w_complete < 0:
+            errors.append(f"W_RUN + W_FAIL must be <= 1.0, got {w_run} + {w_fail}")
+        if errors:
+            for e in errors:
+                print(f"--random: {e}", file=sys.stderr)
+            sys.exit(1)
+        roll = random.random()
+        if roll < w_run:
+            print("Random behavior: running")
+            parsed.sleep = sleep_secs
+        elif roll < w_run + w_fail:
+            print("Random behavior: fail")
+            parsed.exitcode = fail_code
+        else:
+            print("Random behavior: complete")
+
     if parsed.proc_num is not None:
         if not parsed.proc_exitcodes and not parsed.proc_sleeps:
             print("--proc-num requires at least one of --proc-exitcodes or --proc-sleeps", file=sys.stderr)
@@ -131,15 +180,6 @@ def main():
                 print(f"--proc-num {parsed.proc_num} is out of range for --proc-sleeps ({len(sleeps)} entries)", file=sys.stderr)
                 sys.exit(1)
             parsed.sleep = sleeps[parsed.proc_num]
-
-    uid = os.getuid()
-    try:
-        uname = pwd.getpwuid(uid).pw_name
-    except KeyError:
-        uname = None
-    print(f"Running as: {uname} [{uid}]" if uname else f"Running as: [{uid}]")
-
-    print("Command line:", " ".join(sys.argv))
 
     for key in parsed.env:
         value = os.environ.get(key, None)
