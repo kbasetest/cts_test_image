@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+from datetime import datetime, timezone
 from pathlib import Path
 import grp
 import os
@@ -131,6 +132,7 @@ def main():
     print(f"Running as: {uname} [{uid}]" if uname else f"Running as: [{uid}]")
 
     print("Command line:", " ".join(sys.argv))
+    print("Start time:", datetime.now(timezone.utc).isoformat())
 
     if parsed.random:
         parts = parsed.random.split(",")
@@ -155,6 +157,7 @@ def main():
                 print(f"--random: {e}", file=sys.stderr)
             sys.exit(1)
         roll = random.random()
+        print(f"Random roll: {roll:.4f} (run<{w_run}, fail<{w_run + w_fail}, complete<={1.0})")
         if roll < w_run:
             print("Random behavior: running")
             parsed.sleep = sleep_secs
