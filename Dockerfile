@@ -1,4 +1,4 @@
-FROM python:3.13
+FROM pytorch/pytorch:2.5.1-cuda12.1-cudnn9-runtime
 
 ARG RUN_USER=root
 

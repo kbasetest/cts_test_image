@@ -8,8 +8,11 @@ import os
 import pwd
 import random
 import stat
+import subprocess
 import sys
 import time
+
+import torch
 
 
 def print_entry(path: Path) -> None:
@@ -31,6 +34,45 @@ def print_all_files(path: Path) -> None:
     if path.is_dir():
         for item in path.iterdir():
             print_all_files(item)
+
+
+def print_gpu_info() -> None:
+    try:
+        result = subprocess.run(["nvidia-smi"], capture_output=True, text=True, timeout=10)
+        if result.returncode == 0:
+            print("nvidia-smi output:")
+            print(result.stdout.rstrip())
+        else:
+            print(f"nvidia-smi error: {result.stderr.rstrip()}")
+    except FileNotFoundError:
+        print("nvidia-smi: not found")
+    except subprocess.TimeoutExpired:
+        print("nvidia-smi: timed out")
+
+    print(f"PyTorch version: {torch.__version__}")
+    cuda_available = torch.cuda.is_available()
+    print(f"CUDA available: {cuda_available}")
+    if cuda_available:
+        print(f"CUDA version: {torch.version.cuda}")
+        count = torch.cuda.device_count()
+        print(f"GPU count: {count}")
+        for i in range(count):
+            props = torch.cuda.get_device_properties(i)
+            mem_gb = props.total_memory / 1024 ** 3
+            print(f"  GPU {i}: {props.name}, {mem_gb:.1f} GB")
+
+
+def run_gpu_task() -> None:
+    if not torch.cuda.is_available():
+        print("GPU task: no CUDA GPUs available", file=sys.stderr)
+        sys.exit(1)
+    size = 4096
+    print(f"GPU task: {size}x{size} float32 matrix multiply on GPU 0 ...", flush=True)
+    a = torch.randn(size, size, device="cuda")
+    b = torch.randn(size, size, device="cuda")
+    c = torch.mm(a, b)
+    torch.cuda.synchronize()
+    print(f"GPU task: done, result checksum {c.sum().item():.4f}")
 
 
 def touch(path_str: str) -> None:
@@ -99,6 +141,12 @@ def main():
     )
 
     parser.add_argument(
+        "-G", "--gpu-task",
+        action="store_true",
+        help="Run a small GPU matrix multiply to confirm CUDA compute is working"
+    )
+
+    parser.add_argument(
         "-x", "--exitcode",
         type=int,
         metavar="EXITCODE",
@@ -133,6 +181,7 @@ def main():
 
     print("Command line:", " ".join(sys.argv))
     print("Start time:", datetime.now(timezone.utc).isoformat())
+    print_gpu_info()
 
     if parsed.random:
         parts = parsed.random.split(",")
@@ -183,6 +232,9 @@ def main():
                 print(f"--proc-num {parsed.proc_num} is out of range for --proc-sleeps ({len(sleeps)} entries)", file=sys.stderr)
                 sys.exit(1)
             parsed.sleep = sleeps[parsed.proc_num]
+
+    if parsed.gpu_task:
+        run_gpu_task()
 
     for key in parsed.env:
         value = os.environ.get(key, None)
