@@ -57,12 +57,20 @@ jobs:
           flavor: |
             suffix=-nonroot
 
+      - name: Extract Docker metadata (script)
+        id: meta-script
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          flavor: |
+            suffix=-script
+
       - name: Build and push Docker image (root)
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          build-args: RUN_USER=root
+          target: root
           tags: ${{ steps.meta-root.outputs.tags }}
           labels: ${{ steps.meta-root.outputs.labels }}
           cache-from: type=gha
@@ -73,8 +81,19 @@ jobs:
         with:
           context: .
           push: true
-          build-args: RUN_USER=nonroot
+          target: nonroot
           tags: ${{ steps.meta-nonroot.outputs.tags }}
           labels: ${{ steps.meta-nonroot.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push Docker image (script)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          target: script
+          tags: ${{ steps.meta-script.outputs.tags }}
+          labels: ${{ steps.meta-script.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
