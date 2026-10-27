@@ -23,7 +23,11 @@ _AI_MODEL_PROMPT_TEMPLATE = "What is {a} + {b}? Respond with only the number, no
 _AI_MODEL_MAX_NEW_TOKENS = 64
 # stdout for this script is only captured by the CTS when the container fails, so the actual
 # query result is also written here, as a job output file, to be retrievable on success too.
+# Written under --ai-model-output-dir, not the working directory, since the working directory
+# has no guaranteed relationship to the job's output mount point - see Parameters.output_mount_point
+# in the CTS, whose default this mirrors.
 _AI_MODEL_RESPONSE_FILE = "prompt_response.md"
+_DEFAULT_AI_MODEL_OUTPUT_DIR = "/output_files"
 
 
 def print_entry(path: Path) -> None:
@@ -86,16 +90,21 @@ def run_gpu_task() -> None:
     print(f"GPU task: done, result checksum {c.sum().item():.4f}")
 
 
-def run_ai_model_query(model_path: str, a: int, b: int, force_cuda: bool = False) -> None:
+def run_ai_model_query(
+    model_path: str, a: int, b: int, output_dir: str, force_cuda: bool = False
+) -> None:
     """
     Load a model and tokenizer from a local directory (e.g. a mounted AI model store path)
     and run one fixed, deterministic text generation against it, writing the result to both
-    stdout and _AI_MODEL_RESPONSE_FILE. This only ever prints/writes the model's output as
-    inert text - it is never passed to exec/eval/a shell or otherwise interpreted as code or
-    instructions, so there's no path by which the model's own output could run arbitrary code
-    in this image.
+    stdout and _AI_MODEL_RESPONSE_FILE under output_dir. This only ever prints/writes the
+    model's output as inert text - it is never passed to exec/eval/a shell or otherwise
+    interpreted as code or instructions, so there's no path by which the model's own output
+    could run arbitrary code in this image.
 
     a, b - the two integers to add in the prompt.
+    output_dir - the directory in which to write _AI_MODEL_RESPONSE_FILE. Must match the job's
+        output mount point for the file to actually be collected as a job output - the
+        working directory has no guaranteed relationship to that mount point.
     force_cuda - use "cuda" unconditionally rather than falling back to "cpu" when CUDA isn't
         available, so a run on a node that unexpectedly has no GPU fails loudly instead of
         silently succeeding on the CPU - useful for confirming GPU scheduling actually worked.
@@ -146,8 +155,9 @@ def run_ai_model_query(model_path: str, a: int, b: int, force_cuda: bool = False
         f"Response:\n\n{response}\n"
     )
     print(content, flush=True)
-    Path(_AI_MODEL_RESPONSE_FILE).write_text(content)
-    print(f"AI model query: wrote response to {_AI_MODEL_RESPONSE_FILE}", flush=True)
+    response_path = Path(output_dir) / _AI_MODEL_RESPONSE_FILE
+    response_path.write_text(content)
+    print(f"AI model query: wrote response to {response_path}", flush=True)
 
 
 def touch(path_str: str) -> None:
@@ -227,6 +237,14 @@ def main():
         help="Load a model from the given local directory (e.g. a mounted AI model store "
              f"path) and run a fixed query against it, writing the result to stdout and "
              f"{_AI_MODEL_RESPONSE_FILE}"
+    )
+    parser.add_argument(
+        "--ai-model-output-dir",
+        metavar="DIRECTORY",
+        default=_DEFAULT_AI_MODEL_OUTPUT_DIR,
+        help="Directory to write the --ai-model-query response file to - must match the "
+             f"job's output_mount_point for it to be collected as a job output "
+             f"(default: {_DEFAULT_AI_MODEL_OUTPUT_DIR})"
     )
     parser.add_argument(
         "--ai-model-numbers",
@@ -337,7 +355,10 @@ def main():
     if parsed.ai_model_query:
         try:
             run_ai_model_query(
-                parsed.ai_model_query, *parsed.ai_model_numbers, force_cuda=parsed.force_cuda
+                parsed.ai_model_query,
+                *parsed.ai_model_numbers,
+                parsed.ai_model_output_dir,
+                force_cuda=parsed.force_cuda,
             )
         except Exception as e:
             print(f"AI model query failed: {e}", file=sys.stderr)
