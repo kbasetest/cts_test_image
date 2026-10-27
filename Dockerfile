@@ -1,5 +1,7 @@
 FROM pytorch/pytorch:2.5.1-cuda12.1-cudnn9-runtime AS base
 
+RUN pip install --no-cache-dir transformers==4.57.6
+
 ADD ./tester.py /opt
 
 FROM base AS nonroot-base

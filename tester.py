@@ -13,6 +13,17 @@ import sys
 import time
 
 import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+
+# The prompt itself is fixed in code rather than taken as an argument - this flag only ever
+# needs to prove the mounted model is present and loadable, not exercise arbitrary prompts.
+# The two numbers added are configurable so the expected answer can be varied per run.
+_AI_MODEL_PROMPT_TEMPLATE = "What is {a} + {b}? Respond with only the number, nothing else."
+_AI_MODEL_MAX_NEW_TOKENS = 64
+# stdout for this script is only captured by the CTS when the container fails, so the actual
+# query result is also written here, as a job output file, to be retrievable on success too.
+_AI_MODEL_RESPONSE_FILE = "prompt_response.md"
 
 
 def print_entry(path: Path) -> None:
@@ -73,6 +84,70 @@ def run_gpu_task() -> None:
     c = torch.mm(a, b)
     torch.cuda.synchronize()
     print(f"GPU task: done, result checksum {c.sum().item():.4f}")
+
+
+def run_ai_model_query(model_path: str, a: int, b: int, force_cuda: bool = False) -> None:
+    """
+    Load a model and tokenizer from a local directory (e.g. a mounted AI model store path)
+    and run one fixed, deterministic text generation against it, writing the result to both
+    stdout and _AI_MODEL_RESPONSE_FILE. This only ever prints/writes the model's output as
+    inert text - it is never passed to exec/eval/a shell or otherwise interpreted as code or
+    instructions, so there's no path by which the model's own output could run arbitrary code
+    in this image.
+
+    a, b - the two integers to add in the prompt.
+    force_cuda - use "cuda" unconditionally rather than falling back to "cpu" when CUDA isn't
+        available, so a run on a node that unexpectedly has no GPU fails loudly instead of
+        silently succeeding on the CPU - useful for confirming GPU scheduling actually worked.
+    """
+    prompt = _AI_MODEL_PROMPT_TEMPLATE.format(a=a, b=b)
+    print(f"AI model query: loading model from {model_path} ...", flush=True)
+    # local_files_only ensures this can only ever use what's actually mounted at model_path -
+    # if staging/mounting is broken, this fails loudly instead of silently falling back to a
+    # network fetch and masking the problem.
+    tokenizer = AutoTokenizer.from_pretrained(model_path, local_files_only=True)
+    model = AutoModelForCausalLM.from_pretrained(model_path, local_files_only=True)
+
+    device = "cuda" if (force_cuda or torch.cuda.is_available()) else "cpu"
+    print(f"AI model query: running on {device}", flush=True)
+    model = model.to(device)
+    model.eval()
+
+    messages = [{"role": "user", "content": prompt}]
+    template_kwargs = dict(
+        add_generation_prompt=True, return_tensors="pt", return_dict=True,
+    )
+    try:
+        # enable_thinking=False keeps the output a direct answer for models (e.g. Qwen3) that
+        # otherwise emit a <think>...</think> preamble by default.
+        inputs = tokenizer.apply_chat_template(
+            messages, enable_thinking=False, **template_kwargs,
+        )
+    except TypeError:
+        # Not every chat template understands enable_thinking - fall back without it.
+        inputs = tokenizer.apply_chat_template(messages, **template_kwargs)
+    inputs = inputs.to(device)
+
+    with torch.no_grad():
+        output_ids = model.generate(
+            **inputs,
+            max_new_tokens=_AI_MODEL_MAX_NEW_TOKENS,
+            do_sample=False,
+        )
+    response = tokenizer.decode(
+        output_ids[0][inputs["input_ids"].shape[-1]:], skip_special_tokens=True
+    )
+
+    content = (
+        "# AI model query result\n\n"
+        f"Model path: {model_path}\n\n"
+        f"Device: {device}\n\n"
+        f"Prompt: {prompt}\n\n"
+        f"Response:\n\n{response}\n"
+    )
+    print(content, flush=True)
+    Path(_AI_MODEL_RESPONSE_FILE).write_text(content)
+    print(f"AI model query: wrote response to {_AI_MODEL_RESPONSE_FILE}", flush=True)
 
 
 def touch(path_str: str) -> None:
@@ -144,6 +219,29 @@ def main():
         "-G", "--gpu-task",
         action="store_true",
         help="Run a small GPU matrix multiply to confirm CUDA compute is working"
+    )
+
+    parser.add_argument(
+        "-Q", "--ai-model-query",
+        metavar="MODEL_DIRECTORY",
+        help="Load a model from the given local directory (e.g. a mounted AI model store "
+             f"path) and run a fixed query against it, writing the result to stdout and "
+             f"{_AI_MODEL_RESPONSE_FILE}"
+    )
+    parser.add_argument(
+        "--ai-model-numbers",
+        nargs=2,
+        type=int,
+        default=[2, 2],
+        metavar=("A", "B"),
+        help="The two integers to add in the --ai-model-query prompt (default: 2 2)"
+    )
+    parser.add_argument(
+        "--force-cuda",
+        action="store_true",
+        help="Use cuda unconditionally for --ai-model-query instead of falling back to cpu "
+             "when unavailable, so the run fails loudly if cuda was requested but the node "
+             "doesn't actually have a GPU"
     )
 
     parser.add_argument(
@@ -235,6 +333,15 @@ def main():
 
     if parsed.gpu_task:
         run_gpu_task()
+
+    if parsed.ai_model_query:
+        try:
+            run_ai_model_query(
+                parsed.ai_model_query, *parsed.ai_model_numbers, force_cuda=parsed.force_cuda
+            )
+        except Exception as e:
+            print(f"AI model query failed: {e}", file=sys.stderr)
+            sys.exit(1)
 
     for key in parsed.env:
         value = os.environ.get(key, None)
