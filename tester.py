@@ -349,21 +349,6 @@ def main():
                 sys.exit(1)
             parsed.sleep = sleeps[parsed.proc_num]
 
-    if parsed.gpu_task:
-        run_gpu_task()
-
-    if parsed.ai_model_query:
-        try:
-            run_ai_model_query(
-                parsed.ai_model_query,
-                *parsed.ai_model_numbers,
-                parsed.ai_model_output_dir,
-                force_cuda=parsed.force_cuda,
-            )
-        except Exception as e:
-            print(f"AI model query failed: {e}", file=sys.stderr)
-            sys.exit(1)
-
     for key in parsed.env:
         value = os.environ.get(key, None)
         print(f"{key}={value}")
@@ -382,6 +367,21 @@ def main():
         print(f"\nListing {p}")
         print_all_files(Path(p))
         print()
+
+    if parsed.gpu_task:
+        run_gpu_task()
+
+    if parsed.ai_model_query:
+        try:
+            run_ai_model_query(
+                parsed.ai_model_query,
+                *parsed.ai_model_numbers,
+                parsed.ai_model_output_dir,
+                force_cuda=parsed.force_cuda,
+            )
+        except Exception as e:
+            print(f"AI model query failed: {e}", file=sys.stderr)
+            sys.exit(1)
 
     if parsed.sleep is not None:
         time.sleep(parsed.sleep)
